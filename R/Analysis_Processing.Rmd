@@ -1,0 +1,847 @@
+---
+title: "Processing of the MAternal Dx ASD outputs"
+author: "VK"
+date: "12/1/2024"
+output: html_document
+---
+
+## The code is based on the full code in the archive folder, and it is edited for clarift and matching the output numbers and order with those presented in the mansucript
+
+### Loading the required libraries used by the program
+```{r include=FALSE}
+library(tidyverse)
+library(readxl)
+library(icd.data)
+library(fdrtool)
+```
+
+```{r}
+# Reading in ICD-10 labels to merge with the results indexed with level 3 ICD-10 codes.
+ICD10 <- distinct(icd.data::icd10cm2016, three_digit, major, sub_chapter, chapter) %>% rename(ICD10_3 = three_digit) %>% distinct(ICD10_3, .keep_all = T)
+
+# File path where the outputs from the analyses conducted on the server are saved.
+file_path <- "/data/outputs.xlsx"
+
+sheet_names <- excel_sheets(file_path)
+outputs <- list()
+
+# Loop through each sheet and read it into a data frame
+for (sheet_name in sheet_names) {
+  data <- read_excel(file_path, sheet = sheet_name)
+  outputs[[sheet_name]] <- data
+}
+
+# Save each data frame on the list as a separate data frame
+for (name in names(outputs)) {
+  assign(name, outputs[[name]])
+}
+```
+
+# Description of the models
+```{r}
+# Model 1: Running Cox proportional hazard model to examine the association between diagnoses and ASD -- only birth year
+# Model 2: Running Cox proportional hazard model to examine the association between diagnoses and ASD -- Model 1 + sex + mom's age 
+# Model 3: Running Cox proportional hazard model to examine the association between diagnoses and ASD -- Model 2 + health care utilization
+# Model 4: Running Cox proportional hazard model to examine the association between diagnoses and ASD -- Model 3 + Mom's Edu
+# Model 5: Running Cox proportional hazard model to examine the association between diagnoses and ASD -- Model 4 + Mom's Income
+
+# Model 05 S1: Model 5 with distinct diagnoses in the 12-month period preceding childbirth
+# Model 05 S2: Model 5 with number of maternal health care encounter in the 48-month period preceding childbirth
+# Model 05 S3: Model 5 without healt care utilization adjustment
+# Model 05 S4: Model 5 but restricted to children born before end of 2009, ensuring >8 years of follow-up for all children.
+# Model 05 5A: Model 5 among mothers with at least 72 month pf available data before the birth
+# Model 05 S5: Model 5 chronic disease with 72 months window.
+# Model 05 S6: Model 5 chronic disease with 12 months window.
+# Model 05 S7: Model 5 where exposure is defined by at least 2 records rather than 1.
+# Model 05 S8: Model 5 among those without missing father info
+
+# Model 11: Multi-Diagnosis Model: all significant acute and chronic conditions + covariates from Model 5
+# Model 11 S1 ref: Model 11 limited to those with paternal income data
+# Model 11 S1: Model 11 + paternal income
+# Model 11 S2: Model 11 + parity
+# Model 11 S3: Model 11 only among those with parity = 1
+# Model 11 S4: Model 11 among singletons only
+# Model 11 S5: Model 11 among those with mother without ASD dx
+# Model 11 S6m: Model 11 among male only
+# Model 11 S6f: Model 11 among female only
+# Model 11 S7id: Model 11 among those with intellectual disability (ID)
+# Model 11 S7nid: Model 11 among those without ID
+# Model11_COV: estiamtes of covariates from Model 11
+
+# Model 20: Model 5 + parity among sibiling sample
+# Model 21: Sibling analysis of model 5 with parity and DOBY as factor rather than strata
+# Model 21 S1: Model 21 among male only
+
+# Model PAT_MAT: Model 5 with both maternal and paternal dx included in the model
+
+# table_asd_dx_A: non-chronic maternal dx by offspring ASD status
+# table_asd_dx_C: chronic maternal dx by offspring ASD status
+```
+
+
+## Prevalence of maternal dx by ASD status and in the total sample
+```{r}
+colnames(table_asd_dx_A) <- c("ICD10_3", "ASD", "No_ASD")
+colnames(table_asd_dx_C) <- c("ICD10_3", "ASD", "No_ASD")
+
+# Prevalence of dx by ASD status
+table_prevalence <- dx.a.by.asd <- rbind(table_asd_dx_A, table_asd_dx_C) %>% 
+  left_join(ICD10, by = "ICD10_3") %>% 
+  table_asd_dx %>%
+  mutate(prevalence = ((ASD + No_ASD)/1131899)*100) %>% 
+  mutate(prevalence_pct = paste0(format(round(prevalence, digits = 2), nsmall = 2), "%"))
+```
+
+
+## Foramtting of models
+```{r}
+Model01 <- formatting_df_q(Model01)
+Model02 <- formatting_df_q(Model02)
+Model03 <- formatting_df_q(Model03)
+Model04 <- formatting_df_q(Model04)
+Model05 <- formatting_df_q(Model05)
+Model11 <- formatting_df_p(Model11)
+Model12 <- formatting_df_p(Model12)
+Model13 <- formatting_df_p(Model13)
+Model14 <- formatting_df_p(Model14)
+Model15 <- formatting_df_p(Model15)
+Model16 <- formatting_df_p(Model16)
+Model11_s1ref <- formatting_df_p(Model11_s1ref)
+Model11_s1 <- formatting_df_p(Model11_s1)
+Model11_s2 <- formatting_df_p(Model11_s2)
+Model11_s3 <- formatting_df_p(Model11_s3)
+Model11_s4 <- formatting_df_p(Model11_s4)
+Model11_s5 <- formatting_df_p(Model11_s5)
+#Model17 <- formatting_df_p(Model17)
+Model20 <- formatting_df_p_2(Model20)
+Model21 <- formatting_df_p(Model21)
+Model21_b <- formatting_df_p_2(Model21_b)
+Model20_s6 <- formatting_df_p(Model20_s6)
+Model21_s6 <- formatting_df_p_2(Model21_s6)
+Model11_s7m <- formatting_df_p(Model11_s7m)
+Model11_s7f <- formatting_df_p(Model11_s7f)
+Model11_s8id <- formatting_df_p(Model11_s8id)
+Model11_s8nid <- formatting_df_p(Model11_s8nid)
+Model21c_s6 <- formatting_df_p(Model21c_s6)
+Model21_c <- formatting_df_p(Model21_c)
+
+Model05_S1 <- formatting_df_q(Model05_S1)
+Model05_S2 <- formatting_df_q(Model05_S2)
+Model05_S3 <- formatting_df_q(Model05_S3)
+Model05_S4 <- formatting_df_q(Model05_S4)
+Model05_S5 <- formatting_df_q(Model05_S5)
+Model05_S6 <- formatting_df_q(Model05_S6)
+Model05_S7 <- formatting_df_q(Model05_S7)
+Model11_COV <- formatting_df_p(Model11_COV)
+```
+
+# Table S2 – Associations between ICD-10 level 3 non-chronic maternal diagnoses and offspring autism from single-diagnosis models with iterative adjustment for potential confounders.
+```{r}
+Model01_05 <- Model01 %>% 
+  select(ICD10_3, HR95) %>% 
+  rename(M01_HR95 = HR95) %>%
+  left_join((Model02 %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(M02_HR95 = HR95)), by = "ICD10_3") %>%
+  left_join((Model03 %>%
+               select(ICD10_3, HR95) %>%
+               rename(M03_HR95 = HR95)), by = "ICD10_3") %>%
+  left_join((Model04 %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(M04_HR95 = HR95)), by = "ICD10_3") %>% 
+  left_join((Model05 %>% 
+               select(ICD10_3, HR95, major, sub_chapter, chapter, a_c) %>% 
+               rename(M05_HR95 = HR95)), by = "ICD10_3") %>% 
+        select(ICD10_3, a_c, chapter, sub_chapter, major, M01_HR95, M02_HR95, M03_HR95, M04_HR95, M05_HR95)
+
+Model01_05_A <- Model01_05 %>% 
+  filter(a_c == "A") %>% 
+  left_join(table_asd_dx_A, by = "ICD10_3")
+
+SE_Model05 <- Model05 %>% 
+  mutate(L_HR = log(HR),
+         LIM = log(`97.5%`) - L_HR) %>% 
+  mutate(SE_chg = paste0(((abs(L_HR) - LIM)/LIM)*100), "%") %>% 
+  select(ICD10_3, SE_chg)
+
+Model01_05_A <- Model01_05_A %>%
+  left_join(SE_Model05, by = "ICD10_3")
+
+```
+
+# ???
+```{r}
+#a_c <- Model05 %>% select(ICD10_3, a_c)
+
+```
+
+# Table S3 – Associations between ICD-10 level 3 chronic maternal diagnoses and offspring autism from single-diagnosis models with iterative adjustment for potential confounders.
+```{r}
+Model01_05_C <- Model01_05 %>% 
+  filter(a_c == "C") %>% 
+  left_join(table_asd_dx_C, by = "ICD10_3") %>%
+  left_join(SE_Model05, by = "ICD10_3")
+```
+
+# Table S4 – Associations between ICD-10 level 3 chronic and non-chronic maternal diagnoses and offspring autism from a multi-diagnosis model
+```{r}
+Model11_T <-  Model11 %>% 
+  left_join(table_asd_dx, by = "ICD10_3") %>% 
+  left_join(a_c, by = "ICD10_3") %>%  
+  select(ICD10_3, chapter, sub_chapter, major, HR95, ASD, No_ASD)
+write_csv(Model11_T, "Tables/TabS05_Model11.csv")
+
+
+Model11_COV <- Model11_COV %>% 
+  filter(is.na(major))
+write_csv(Model11_COV, "Tables/TabS05_Covariates.csv")
+```
+
+
+
+# Table S5 – Associations between ICD-10 level 3 non-chronic maternal diagnoses and offspring autism from sensitivity analysis of healthcare utilization definition and follow-up duration in fully adjusted single-diagnosis models.
+```{r}
+Model05_SS <- Model05 %>% 
+  left_join((Model05_1S %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(S01_HR95 = HR95)), by = "ICD10_3") %>%
+  left_join((Model05_2S %>%
+               select(ICD10_3, HR95) %>%
+               rename(S02_HR95 = HR95)), by = "ICD10_3") %>%
+  left_join((Model05_3S %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(S03_HR95 = HR95)), by = "ICD10_3") %>% 
+  left_join((Model05_4S %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(S04_HR95 = HR95)), by = "ICD10_3") %>%
+  select(ICD10_3, a_c, chapter, sub_chapter, major, HR95, S01_HR95, S02_HR95, S02_HR95, S03_HR95, S04_HR95)
+
+Model05_SS_A <- Model05_SS %>% 
+  filter(a_c == "A")
+```
+
+
+
+# Table S6 – Associations between ICD-10 level 3 chronic maternal diagnoses and offspring autism from sensitivity analysis of healthcare utilization definition and follow-up duration in fully adjusted single-diagnosis models
+```{r}
+Model05_SS_C1 <- Model05_SS %>% 
+  filter(a_c == "C")
+```
+
+
+
+# Table S7 – Associations between ICD-10 level 3 chronic maternal diagnoses and offspring autism from sensitivity analysis of exposure definition in single-diagnosis fully adjusted models
+# Restricted to the sample of children with maternal health information in ICD-10 system for at least 72 months prior to child’s birth.
+```{r}
+## Chronic dx with 0-48 month detection window
+Model05_5A <- Model05_S5 %>% 
+  filter(a_c == "C")
+
+## Chronic dx with 0-72 month detection window
+Model05_5S <- Model05_S5 %>% 
+  filter(a_c == "m0072") %>%
+  mutate(a_c = "C")
+
+## Chronic dx with 0-12 month detection window
+Model05_6S <- Model05_S5 %>% 
+  filter(a_c == "A") %>% 
+  mutate(a_c = "C")
+
+## Chronic dx defined as occurrence of the maternal chronic dx on at least 2 distinct occasions during 0-48 months.
+Model05_7S <- Model05_S6 %>% 
+  filter(a_c == "C")
+
+Model05_SS_C2 <- Model05 %>% 
+  left_join((Model05_5A %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(M05A_HR95 = HR95)), by = "ICD10_3") %>%
+  left_join((Model05_5S %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(S05_HR95 = HR95)), by = "ICD10_3") %>%
+  left_join((Model05_6S %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(S06_HR95 = HR95)), by = "ICD10_3") %>% 
+  left_join((Model05_7S %>%
+               select(ICD10_3, HR95) %>% 
+               rename(S07_HR95 = HR95)), by = "ICD10_3") %>% 
+        select(ICD10_3, a_c, chapter, sub_chapter, major, HR95, M05A_HR95, S05_HR95, S06_HR95, S07_HR95) %>% 
+  filter(a_c == "C")
+```
+
+
+# Table S8 – Associations between ICD-10 level 3 chronic and non-chronic maternal diagnoses and offspring autism from a sensitivity analysis of inclusion of paternal income in multi-diagnosis model
+```{r}
+Model11s1_s1red <- Model11_s1ref %>% 
+        select(ICD10_3, HR95, chapter, sub_chapter, major) %>% 
+        rename(M11_S1REF_HR95 = HR95) %>% 
+        left_join((Model11_s1 %>% 
+                           select(ICD10_3, HR95) %>% 
+                           rename(M11_S1_HR95 = HR95)), by = "ICD10_3") %>% 
+        left_join(a_c, by = "ICD10_3") %>% 
+        select(ICD10_3, a_c, chapter, sub_chapter, major, M11_S1REF_HR95, M11_S1_HR95)
+write_csv(Model11s1_s1red, "Tables/TabS06_Model11REF_S1.csv")
+```
+
+# Table S9
+```{r}
+Model11_s2_s5 <- Model11 %>% 
+        select(ICD10_3, HR95, chapter, sub_chapter, major) %>% 
+        rename(M11REF_HR95 = HR95) %>% 
+        left_join((Model11_s2 %>% 
+                           select(ICD10_3, HR95) %>% 
+                           rename(M11_S2_HR95 = HR95)), by = "ICD10_3") %>%
+        left_join((Model11_s3 %>% 
+                           select(ICD10_3, HR95) %>% 
+                           rename(M11_S3_HR95 = HR95)), by = "ICD10_3") %>% 
+        left_join((Model11_s4 %>% 
+                           select(ICD10_3, HR95) %>% 
+                           rename(M11_S4_HR95 = HR95)), by = "ICD10_3") %>% 
+        left_join((Model11_s5 %>% 
+                           select(ICD10_3, HR95) %>% 
+                           rename(M11_S5_HR95 = HR95)), by = "ICD10_3") %>% 
+        left_join(a_c, by = "ICD10_3") %>% 
+        select(ICD10_3, a_c, chapter, sub_chapter, major, M11REF_HR95, M11_S2_HR95, M11_S3_HR95, M11_S4_HR95, M11_S5_HR95)
+write_csv(Model11_s2_s5, "Tables/TabS07_Model11REF_S2_S5.csv")
+```
+
+
+
+
+# Table S10 – Demographic characteristics of the siblings in families with siblings discordant for autism diagnosis
+```{r}
+# Directly from analyses file
+```
+
+
+# Table S11 – Associations between ICD-10 level 3 maternal diagnoses and offspring autism from fully-adjusted and sibling analyses
+```{r}
+ModelsibREF_sib_sibm <- Model20 %>% 
+        select(ICD10_3, HR95, chapter, sub_chapter, major) %>% 
+        rename(M20_REF = HR95) %>% 
+        left_join((Model21 %>% 
+                           select(ICD10_3, HR95) %>% 
+                           rename(M_SIB = HR95)), by = "ICD10_3") %>%
+        left_join((Model21_S1 %>% 
+                           select(ICD10_3, HR95) %>% 
+                           rename(M_SIB_M = HR95)), by = "ICD10_3") %>%
+        left_join(a_c, by = "ICD10_3") %>% 
+        select(ICD10_3, a_c, chapter, sub_chapter, major, M20_REF, M_SIB, M_SIB_M)
+write_csv(ModelsibREF_sib_sibm, "Tables/TabS08_ModelSIB_SIBM.csv")
+
+
+
+ModelsibREF_sib_pchg <- Model20 %>% 
+        left_join(Model21, by = "ICD10_3")
+
+ModelsibREF_sib_pchg$pct1 <- paste0(round(((((ModelsibREF_sib_pchg$HR.y-1) - (ModelsibREF_sib_pchg$HR.x-1))  / (ModelsibREF_sib_pchg$HR.x-1))*100),1), "%")
+ModelsibREF_sib_pchg$pct2 <- (((ModelsibREF_sib_pchg$HR.y-1) - (ModelsibREF_sib_pchg$HR.x-1))  / (ModelsibREF_sib_pchg$HR.x-1))*100
+write_csv(ModelsibREF_sib_pchg, "Tables/TabS11_PCT_CHG.csv")
+
+chg <- ModelsibREF_sib_pchg %>% 
+  mutate(nul_op = case_when(pct2 < -100 ~ "Y",
+                            TRUE ~ "N"),
+         non_sig = case_when(sig.x == "" ~ "Y",
+                             TRUE ~ "N"),
+         group = case_when(pct2 > 0 ~ "Stronger",
+                           TRUE ~ "Weaker"))
+
+a <- chg %>% filter(nul_op == "N")
+a1 <- chg %>% filter(nul_op == "N" & group == "Stronger")
+a2 <- chg %>% filter(nul_op == "N" & group == "Weaker")
+median(abs(a$pct2))
+median(a1$pct2)
+median(a2$pct2)
+b <- chg %>% filter(nul_op == "N" & non_sig == "N")
+b1 <- chg %>% filter(nul_op == "N" & non_sig == "N" & group == "Stronger")
+b2 <- chg %>% filter(nul_op == "N" & non_sig == "N" & group == "Weaker")
+
+median(abs(a$pct2))
+median(a1$pct2)
+median(a2$pct2)
+median(abs(b$pct2))
+median(b1$pct2)
+median(b2$pct2)
+
+median(abs(a$pct2[a$a_c.x == "A"]))
+median(a1$pct2[a1$a_c.x == "A"])
+median(a2$pct2[a2$a_c.x == "A"])
+median(abs(b$pct2[b$a_c.x == "A"]))
+median(b1$pct2[b1$a_c.x == "A"])
+median(b2$pct2[b2$a_c.x == "A"])
+
+median(abs(a$pct2[a$a_c.x == "C"]))
+median(a1$pct2[a1$a_c.x == "C"])
+median(a2$pct2[a2$a_c.x == "C"])
+median(abs(b$pct2[b$a_c.x == "C"]))
+median(b1$pct2[b1$a_c.x == "C"])
+median(b2$pct2[b2$a_c.x == "C"])
+
+
+
+
+acute <- c(0.145, 0.184, 0.267, 0.354, 0.382, 0.473, 0.574, 0.611, 0.836, 0.884, 0.888, 1.07, 1.139, 1.356, 1.448, 1.565, 2.051, 6.831)
+summary(acute)
+chronic <- c(0.069, 0.497, 0.518, 0.661, 0.702, 0.76, 0.808, 0.847, 0.875, 0.947, 1.008, 1.031, 1.043, 1.3, 1.385, 1.492, 1.709, 1.977, 2.618, 2.691)
+summary(chronic)
+
+chg <- read_csv("Tables/TabS11_PCT_CHG.csv") %>% 
+  mutate(nul_op = case_when(pct3 == "Null/opposite direction" ~ "Y",
+                            TRUE ~ "N"),
+         non_sig = case_when(is.na(sig.x) ~ "Y",
+                             TRUE ~ "N"),
+         group = case_when(pct2 > 0 ~ "Stronger",
+                           TRUE ~ "Weaker"))
+
+a <- chg %>% filter(nul_op == "N")
+a1 <- chg %>% filter(nul_op == "N" & group == "Stronger")
+a2 <- chg %>% filter(nul_op == "N" & group == "Weaker")
+median(abs(a$pct2))
+median(a1$pct2)
+median(a2$pct2)
+b <- chg %>% filter(nul_op == "N" & non_sig == "N")
+b1 <- chg %>% filter(nul_op == "N" & non_sig == "N" & group == "Stronger")
+b2 <- chg %>% filter(nul_op == "N" & non_sig == "N" & group == "Weaker")
+median(abs(b$pct2))
+median(b1$pct2)
+median(b2$pct2)
+ test <- M_all_sum %>% left_join(chg, by = "ICD10_3") %>% filter(Type == "Sibling Analysis") %>%  mutate(abs_pct = abs(pct2))
+```
+
+
+
+# Table S12 – Associations between ICD-10 level 3 paternal and maternal diagnoses and offspring autism from fully-adjusted analyses
+```{r}
+pat_mat_df <- pat_mat_04
+pat_mat_df$HRc <- format(round(pat_mat_df$HR,2), nsmall = 2)
+pat_mat_df$LL <- format(round(pat_mat_df$`2.5%`,2), nsmall = 2)
+pat_mat_df$UL <- format(round(pat_mat_df$`97.5%`,2), nsmall = 2)
+pat_mat_df$HR95 <- paste(pat_mat_df$HRc, (paste(pat_mat_df$LL, (paste(pat_mat_df$UL, "]", sep = "")), sep = ", ")), sep = " [")
+pat_mat_df$sig <- ifelse(pat_mat_df$p < 0.05, "*", "")
+pat_mat_df$sig <- ifelse(pat_mat_df$p  < 0.01, "**", pat_mat_df$sig)
+pat_mat_df$sig <- ifelse(pat_mat_df$p  < 0.001, "***", pat_mat_df$sig)
+pat_mat_df$HR95 <- paste(pat_mat_df$HR95, pat_mat_df$sig, sep ="")
+
+pat_mat_df <- pat_mat_df %>% 
+  select(ICD10_3, chapter, sub_chapter, major, HR95, p_m)
+pat_df <- pat_mat_df %>% 
+  filter(p_m == "d")
+mat_df <- pat_mat_df %>% 
+  filter(p_m == "m") %>% 
+  select(ICD10_3, HR95) %>% rename(HR95_maternal = HR95)
+pat_mat_df <- pat_df %>% 
+  left_join(mat_df, by = "ICD10_3") %>% select(-p_m) %>% 
+  left_join((Model05_8S %>% 
+               select(ICD10_3, HR95) %>% 
+               rename(S08_HR95 = HR95)), by = "ICD10_3")
+write_csv(pat_mat_df, "output/TS12.csv")
+```
+
+
+
+# Data for Overall Result Summary with Matched References
+```{r}
+pat_df <- pat_mat_04 %>% 
+  filter(p_m == "d")
+
+Model_all_sum <- Model05 %>% select(ICD10_3, a_c, major, HR, `p-val`) %>% 
+  rename(p =  `p-val`) %>% 
+  left_join((Model11 %>% 
+               select(ICD10_3, HR, p_val) %>% 
+               rename(HR_11 = HR,
+                      p_11 = p_val)), by = "ICD10_3") %>%
+  left_join((Model21_b %>%
+               select(ICD10_3, HR, p_val) %>%
+               rename(HR_sib = HR,
+                      p_sib = p_val)), by = "ICD10_3") %>%
+  left_join((Model20 %>%
+               select(ICD10_3, HR, p_val) %>%
+               rename(HR_sib_ref = HR,
+                      p_sib_ref = p_val)), by = "ICD10_3") %>% 
+  left_join((pat_df %>% 
+               select(ICD10_3, HR, p) %>% 
+               rename(HR_pat= HR,
+                      p_pat = p)), by = "ICD10_3") %>%
+  left_join((Model05_S7 %>% 
+               select(ICD10_3, HR, `p-val`) %>% 
+               rename(HR_pat_ref= HR,
+                      p_pat_ref = `p-val`)), by = "ICD10_3") %>%
+  filter(!is.na(HR_11)) %>%  select(ICD10_3, a_c, major, HR, HR_11, HR_sib, HR_sib_ref, HR_pat, HR_pat_ref, p, p_11, p_sib, p_sib_ref, p_pat, p_pat_ref)
+
+Model_all_sum$M11 <- ((Model_all_sum$HR_11-1) / (Model_all_sum$HR-1))
+Model_all_sum$Msib <- ((Model_all_sum$HR_sib-1) / (Model_all_sum$HR_sib_ref-1))
+Model_all_sum$Mpat <- ((Model_all_sum$HR_pat-1) / (Model_all_sum$HR_pat_ref-1))
+
+Model_all_sum$M11_p <- ifelse(Model_all_sum$p_11 < 0.05, 1, 0)
+Model_all_sum$Msib_p <- ifelse(Model_all_sum$p_sib < 0.05, 1, 0)
+Model_all_sum$Mpat_p <- ifelse(Model_all_sum$p_pat < 0.05, 1, 0)
+
+Model_all_sum$M11_cat <- ifelse((Model_all_sum$M11 < 0.6 | Model_all_sum$M11 > 1.4), 4, 3)
+Model_all_sum$M11_cat <- ifelse((Model_all_sum$M11_cat == 3 & Model_all_sum$M11_p == 1), 1, Model_all_sum$M11_cat)
+Model_all_sum$M11_cat <- ifelse((Model_all_sum$M11_cat == 4 & Model_all_sum$M11_p == 1), 2, Model_all_sum$M11_cat)
+Model_all_sum$M11_cat <- ifelse(is.na(Model_all_sum$HR_11), NA, Model_all_sum$M11_cat)
+
+Model_all_sum$Msib_cat <- ifelse((Model_all_sum$Msib < 0.6 | Model_all_sum$Msib > 1.4), 4, 3)
+Model_all_sum$Msib_cat <- ifelse((Model_all_sum$Msib_cat == 3 & Model_all_sum$Msib_p == 1), 1, Model_all_sum$Msib_cat)
+Model_all_sum$Msib_cat <- ifelse((Model_all_sum$Msib_cat == 4 & Model_all_sum$Msib_p == 1), 2, Model_all_sum$Msib_cat)
+Model_all_sum$Msib_cat <- ifelse(is.na(Model_all_sum$HR_sib), NA, Model_all_sum$Msib_cat)
+
+Model_all_sum$Mpat_cat <- ifelse((Model_all_sum$Mpat < 0.6 | Model_all_sum$Mpat > 1.4), 4, 3)
+Model_all_sum$Mpat_cat <- ifelse((Model_all_sum$Mpat_cat == 3 & Model_all_sum$Mpat_p == 1), 1, Model_all_sum$Mpat_cat)
+Model_all_sum$Mpat_cat <- ifelse((Model_all_sum$Mpat_cat == 4 & Model_all_sum$Mpat_p == 1), 2, Model_all_sum$Mpat_cat)
+Model_all_sum$Mpat_cat <- ifelse(is.na(Model_all_sum$HR_pat), NA, Model_all_sum$Mpat_cat)
+
+write_csv(Model_all_sum, "percent_change.csv")
+Model_all_m5 <- Model_all_sum %>%
+  mutate(Type = "Single-diagnosis Model (Reference)",
+         Category = 1) %>% 
+select(major, Type, Category, ICD10_3, a_c)
+
+Model_all_m11 <- Model_all_sum %>%
+  mutate(Type = "Multi-diagnosis Model",
+         Category = M11_cat) %>% 
+select(major, Type, Category, ICD10_3, a_c)
+
+Model_all_msib <- Model_all_sum %>%
+  mutate(Type = "Sibling Analysis",
+         Category = Msib_cat) %>% 
+select(major, Type, Category, ICD10_3, a_c)
+
+Model_all_mpat <- Model_all_sum %>%
+  mutate(Type = "Paternal Analysis",
+         Category = Mpat_cat) %>% 
+select(major, Type, Category, ICD10_3, a_c)
+
+M_all_sum <- rbind(Model_all_m5, Model_all_m11, Model_all_msib, Model_all_mpat)
+```
+
+
+
+# Figure 01 Volcano plot
+```{r}
+Model05 <- Model05[order(Model05$chapter),]
+Model05 <- Model05 %>% mutate(ICD10_1 = as.integer(factor(chapter)))
+Model05$num <- 1:nrow(Model05)+1
+Model05$`p-val`[Model05$`p-val` < 2e-30] <- 2e-30
+Model05$p <- -log(Model05$`p-val`)
+Model05_volc <- Model05
+Model05_volc$log_hr <- log(Model05_volc$HR)
+Model05_volc$sig_chapter <- ifelse(Model05_volc$sig == "", "P-value not significant (FDR-adjusted)", as.character(Model05_volc$chapter))
+Model05_volc$sig_chapter <- factor(Model05_volc$sig_chapter, levels = c("Diseases of the circulatory system", 
+                                                                        "Diseases of the genitourinary system",
+                                                                        "Diseases of the musculoskeletal system and connective tissue", 
+                                                                        "Diseases of the nervous system", 
+                                                                        "Diseases of the respiratory system",
+                                                                        "Endocrine, nutritional and metabolic diseases",
+                                                                        "Factors influencing health status and contact with health services",
+                                                                        "Injury, poisoning and certain other consequences of external causes",
+                                                                        "Mental, Behavioral and Neurodevelopmental disorders",
+                                                                        "Neoplasms",
+                                                                        "Pregnancy, childbirth and the puerperium",
+                                                                        "P-value not significant (FDR-adjusted)"))
+table(Model05_volc$sig_chapter)
+
+Model05_volc$label <- ifelse(Model05_volc$sig == "", NA, as.character(Model05_volc$major))
+
+plot <- ggplot(data = Model05_volc, aes(x = HR, y = -log10(`p-val`), col = sig_chapter, #label = label 
+      )) +
+  scale_x_continuous(trans = 'log', breaks = c(0.50, 0.66, 1.00, 1.50, 2.00, 3.00)) +
+  geom_vline(xintercept = c(1), col = "black", linetype = 'dashed') +
+  geom_hline(yintercept = -log10(0.05), col = "black", linetype = 'dashed') +
+  geom_point(size = 2) + scale_color_manual(values = c("#9dd6d6", "#48211A", "#78A8D1", "#376597", "#C5AC8E", "#537270",  "#556246", "#928F6B", "#00295D", "#9dd6d6", "#A13826", "grey")) + 
+  # theme(legend.position = "bottom") + 
+  labs(subtitle="All diagnoses", 
+       y="-log10(p)", 
+       x="HR", 
+       title="Association of maternal diagnoses with offspring ASD", 
+       caption = "") +
+  guides(color = guide_legend(title = "ICD-10 Dx categories"))  + 
+  theme(legend.title = element_text(size = 6),
+  legend.text = element_text(size = 8)) + 
+  theme_bw() +
+  theme(axis.text = element_text(size = 14),
+        axis.title=element_text(size=14,face="bold"))
+
+ggsave("output/Fig_01.png", plot, width = 14, height = 7)
+```
+
+
+# Figure 02 comparing model 5 with model 11 by chronicity
+```{r}
+Model05.11 <-   Model05 %>% 
+        select(HR, `2.5%`, `97.5%`, ICD10_3, major, sub_chapter, chapter) %>% mutate(model = "05") %>%
+        filter(ICD10_3 %in% Model11$ICD10_3) %>% 
+        rbind(Model11 %>% 
+                select(HR, `2.5%`, `97.5%`, ICD10_3, major, sub_chapter, chapter) %>% 
+                mutate(model = "11")) %>%
+        left_join(a_c, by = "ICD10_3")
+  
+Model05.11$a_c <- as.factor(Model05.11$a_c) 
+levels(Model05.11$a_c) <- c("Non-chronic", "Chronic")
+dodger = position_dodge(width = 0.6)
+plot <- ggplot(Model05.11, aes(y = HR, x = major, colour = model)) +
+  geom_pointrange(aes(ymin = `2.5%`, ymax = `97.5%`),
+                  position = dodger,
+                  size = 0.6) +
+  geom_hline(yintercept = 1.0, linetype = "dotted", linewidth = 0.7) +
+  scale_y_log10(breaks = c( 0.50, 0.66, 1.00, 1.50, 2.00, 3.00),
+                minor_breaks = NULL) +
+  labs(y = "Hazard ratio", x = "ICD-10 level 3 diagnostic category") +
+  coord_flip(ylim = c(0.48, 4.5)) + 
+  theme_bw() + 
+        scale_colour_manual(values=c('grey70', 'deepskyblue4'), labels = c("Single-diagnosis Model", "Multi-diagnosis Model")) + 
+        theme(legend.position="bottom") + 
+        #scale_shape_discrete(labels = c("Acute", "Chronic")) +
+        guides(color = guide_legend(title = "Model")) +
+  facet_wrap(~a_c, scales = "free_y", ncol = 1)
+ggsave("output/Fig_02.png", plot, width = 8, height = 11)
+```
+
+# Figure 03 Sibiling Analysis
+```{r}
+Modelref_vs_sib <-   Model20 %>% 
+        select(HR, `2.5%`, `97.5%`, ICD10_3, major, sub_chapter, chapter) %>% mutate(model = "Reference Model (Sibling Sample)") %>%
+        rbind(Model21_b %>% 
+        select(HR, `2.5%`, `97.5%`, ICD10_3, major, sub_chapter, chapter) %>% 
+                mutate(model = "Sibling Analysis")) %>%
+        left_join(a_c, by = "ICD10_3")
+
+Modelref_vs_sib$a_c <- as.factor(Modelref_vs_sib$a_c) 
+levels(Modelref_vs_sib$a_c) <- c("Non-chronic", "Chronic")
+
+dodger = position_dodge(width = 0.6)
+plot <- ggplot(Modelref_vs_sib, aes(y = HR, x = major, colour = model)) +
+  geom_pointrange(aes(ymin = `2.5%`, ymax = `97.5%`),
+                  position = dodger,
+                  size = 0.6) +
+  geom_hline(yintercept = 1.0, linetype = "dotted", linewidth = 0.7) +
+  scale_y_log10(breaks = c( 0.50, 0.66, 1.00, 1.50, 2.00, 3.00, 5.00),
+                minor_breaks = NULL) +
+  labs(y = "Hazard ratio", x = "ICD-10 level 3 diagnostic category") +
+  coord_flip(ylim = c(0.48, 5.5)) + 
+  theme_bw() + 
+        scale_colour_manual(values=c( 'grey70', 'deepskyblue4')) + 
+        theme(legend.position="bottom") + 
+        guides(color = guide_legend(title = "Model"))  +
+  facet_wrap(~a_c, scales = "free_y", ncol = 1)
+ggsave("Figures/Fig_03_Modelsib_vs_refA.png", plot, width = 8, height = 11)
+```
+
+# Figure 04 Paternal/Maternal Models
+```{r}
+dodger = position_dodge(width = 0.6)
+plot <- ggplot(pat_mat_04, aes(y = HR, x = major, colour = p_m)) +
+  geom_pointrange(aes(ymin = `2.5%`, ymax = `97.5%`),
+                  position = dodger,
+                  size = 0.6) +
+  geom_hline(yintercept = 1.0, linetype = "dotted", linewidth = 0.7) +
+  scale_y_log10(breaks = c( 0.50, 0.66, 1.00, 1.50, 2.00, 3.00),
+                minor_breaks = NULL) +
+  labs(y = "Hazard ratio", x = "ICD-10 level 3 diagnostic category") +
+  coord_flip(ylim = c(0.48, 4.5)) + 
+  theme_bw() + 
+        scale_colour_manual(values=c('grey70', 'deepskyblue4'), labels = c("Paternal dx", "Maternal dx")) + 
+        theme(legend.position="bottom") + 
+        guides(color = guide_legend(title = "Type of diagnosis"), shape = FALSE)
+ggsave("Figures/Fig_04_mat_patA.png", plot, width = 7, height = 6)
+plot
+```
+
+
+# Figure 05
+```{r}
+model_category <- M_all_sum %>%
+  arrange(ICD10_3, a_c) %>%               # sort your dataframe
+  mutate(major = factor(major, unique(major)))
+model_category$Type <- as.factor(model_category$Type)
+levels(model_category$Type)
+model_category$Type <- factor(model_category$Type, levels = c("Single-diagnosis Model (Reference)", "Multi-diagnosis Model", "Sibling Analysis", "Paternal Analysis"))
+model_category$Category <- factor(model_category$Category, levels = c("1", "2", "3", "4"))
+
+pdf("Figures/overall_corrected.pdf")
+g1 <- ggplot(model_category, aes(x =  Type, major)) +
+  geom_tile(aes(fill = as.factor(Category), width = 0.9, height =0.9)) +
+  scale_fill_manual(values=c("dodgerblue3", "lightblue", "darkgoldenrod1", "firebrick3", "grey77"), drop=FALSE, labels = c("No/Minor change & significant", "Major change & significant", "No/Minor change & non-significant", "Major change & non-significant")) + 
+  #geom_text(aes(label = P_cat), size = 2) +
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=0))  + 
+  labs(fill = "Effect of adjustment",y = element_blank(), x = element_blank()) + 
+  theme(legend.position = "none") + 
+  #coord_fixed(ratio = 0.4) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "white")) + scale_x_discrete(position = "top")
+g1
+dev.off()
+pdf("Figures/overall_legend_corrected.pdf")
+g1 <- ggplot(model_category, aes(x =  Type, major)) +
+  geom_tile(aes(fill = as.factor(Category), width = 0.9, height =0.9)) +
+  scale_fill_manual(values=c("dodgerblue3", "lightblue", "darkgoldenrod1", "firebrick3", "grey77"), drop=FALSE, labels = c("No/Minor change & significant", "Major change & significant", "No/Minor change & non-significant", "Major change & non-significant")) + 
+  #geom_text(aes(label = P_cat), size = 2) +
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=0))  + 
+  labs(fill = "Effect of adjustment",y = element_blank(), x = element_blank()) + 
+  #theme(legend.position = "none") + 
+  coord_fixed(ratio = 0.7) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+panel.background = element_blank(), axis.line = element_line(colour = "white")) + scale_x_discrete(position = "top")
+ggsave("Figures/Fig_05_Overall.png", g1, width = 7, height = 8)
+g1
+dev.off()
+```
+
+
+
+
+# Extended Data Figure 02 -  Male/Female
+```{r}
+Model11mf <-   Model11_s6f %>% 
+  select(HR, `2.5%`, `97.5%`, ICD10_3, major, sub_chapter, chapter) %>% 
+  mutate(model = "Female") %>%
+  rbind(Model11_s6m %>% 
+          select(HR, `2.5%`, `97.5%`, ICD10_3, major, sub_chapter, chapter) %>% 
+          mutate(model = "Male")) %>% 
+  left_join(a_c, by = "ICD10_3") %>% 
+  left_join(select(table_prevalence, ICD10_3, prevalence, prevalence_pct), by = "ICD10_3") 
+
+
+pct_labels <- Model11mf %>%
+    arrange(major) %>% 
+  distinct(major, .keep_all = T) 
+pct_labels <-    print(pct_labels$ prevalence_pct)
+
+Model11mf$major <- droplevels(Model11mf$major)
+
+# Reorder levels of x based on y
+Model11mf$prevalence_pct <- as.factor(Model11mf$prevalence_pct)
+
+dodger = position_dodge(width = 0.6)
+
+dodger = position_dodge(width = 0.6)
+plot <- ggplot(Model11mf, aes(y = HR, x = major, colour = model)) +
+  geom_pointrange(aes(ymin = `2.5%`, ymax = `97.5%`),
+                  position = dodger,
+                  size = 0.6) +
+  geom_hline(yintercept = 1.0, linetype = "dotted", linewidth = 0.7) +
+  scale_y_log10(breaks = c( 0.50, 0.66, 1.00, 1.50, 2.00, 3.00),
+                minor_breaks = NULL) +
+  labs(y = "Hazard ratio", x = "ICD-10 level 3 diagnostic category") +
+  coord_flip(ylim = c(0.48, 4.5)) + 
+  theme_bw() + 
+        scale_colour_manual(values=c('deepskyblue4', 'grey70')) + 
+        theme(legend.position="bottom") + 
+        guides(color = guide_legend(title = "Model"), shape = guide_legend(title = "Dx type"))
+ggsave("Figures/Fig_S01_Model11mf.png", plot, width = 8, height = 9)
+
+
+plot <- ggplot(Model11mf, aes(y = HR, x = as.numeric(major), colour = model)) +
+  geom_pointrange(aes(ymin = `2.5%`, ymax = `97.5%`),
+                  position = dodger,
+                  size = 0.6) +
+  geom_hline(yintercept = 1.0, linetype = "dotted", linewidth = 0.7) +
+  scale_y_log10(breaks = c( 0.50, 0.66, 1.00, 1.50, 2.00, 3.00),
+                minor_breaks = NULL) +
+  labs(y = "Hazard ratio", x = "ICD-10 level 3 diagnostic category") +
+  scale_x_continuous(breaks = 1:n_distinct(Model11mf$major),
+                     labels = levels(Model11mf$major),
+                     sec.axis = sec_axis(~.,
+                                         breaks = 1:n_distinct(Model11mf$major),
+                                         labels = pct_labels,
+                                         name = "Prevalence of ICD-10 level 3 diagnosis")) +
+  coord_flip(ylim = c(0.48, 4.5)) + 
+  theme_bw() + 
+        scale_colour_manual(values=c('deepskyblue4', 'grey70')) + 
+        theme(legend.position="bottom") + 
+        guides(color = guide_legend(title = "Model"), shape = guide_legend(title = "Dx type"))
+ggsave("Figures/Fig_S01_Model11mf_prv_pct.png", plot, width = 8, height = 9)
+```
+
+# Extended Data Figure 03 -  ID/No_ID
+```{r}
+Model11idnid <-   Model11_s7id %>% 
+        select(HR, `2.5%`, `97.5%`, ICD10_3, major, sub_chapter, chapter) %>% mutate(model = "ID") %>%
+        rbind(Model11_s7nid %>% 
+        select(HR, `2.5%`, `97.5%`, ICD10_3, major, sub_chapter, chapter) %>% 
+                mutate(model = "no ID")) %>%
+        left_join(a_c, by = "ICD10_3") %>% 
+  left_join(select(table_prevalence, ICD10_3, prevalence, prevalence_pct), by = "ICD10_3") 
+
+
+pct_labels <- Model11idnid %>%
+    arrange(major) %>% 
+  distinct(major, .keep_all = T) 
+pct_labels <-    print(pct_labels$ prevalence_pct)
+
+Model11idnid$major <- droplevels(Model11idnid$major)
+
+# Reorder levels of x based on y
+Model11idnid$prevalence_pct <- as.factor(Model11idnid$prevalence_pct)
+
+dodger = position_dodge(width = 0.6)
+plot <- ggplot(Model11idnid, aes(y = HR, x = major, colour = model)) +
+  geom_pointrange(aes(ymin = `2.5%`, ymax = `97.5%`),
+                  position = dodger,
+                  size = 0.6) +
+  geom_hline(yintercept = 1.0, linetype = "dotted", linewidth = 0.7) +
+  scale_y_log10(breaks = c( 0.50, 0.66, 1.00, 1.50, 2.00, 3.00),
+                minor_breaks = NULL) +
+  labs(y = "Hazard ratio", x = "ICD-10 level 3 diagnostic category") +
+  coord_flip(ylim = c(0.48, 4.5)) + 
+  theme_bw() + 
+        scale_colour_manual(values=c('grey70', 'deepskyblue4')) + 
+        theme(legend.position="bottom") + 
+        guides(color = guide_legend(title = "Model"), shape = guide_legend(title = "Dx type"))
+ggsave("Figures/Fig_S02_Model11idnid.png", plot, width = 8, height = 9)
+
+
+    
+plot <- ggplot(Model11idnid, aes(y = HR, x = as.numeric(major), colour = model)) +
+  geom_pointrange(aes(ymin = `2.5%`, ymax = `97.5%`),
+                  position = dodger,
+                  size = 0.6) +
+  geom_hline(yintercept = 1.0, linetype = "dotted", linewidth = 0.7) +
+  scale_y_log10(breaks = c( 0.50, 0.66, 1.00, 1.50, 2.00, 3.00),
+                minor_breaks = NULL) +
+  labs(y = "Hazard ratio", x = "ICD-10 level 3 diagnostic category") +
+    scale_x_continuous(breaks = 1:n_distinct(Model11idnid$major),
+                     labels = levels(Model11idnid$major),
+                     sec.axis = sec_axis(~.,
+                                         breaks = 1:n_distinct(Model11idnid$major),
+                                         labels = pct_labels,
+                                         name = "Prevalence of ICD-10 level 3 diagnosis")) +
+  coord_flip(ylim = c(0.48, 4.5)) + 
+  theme_bw() + 
+        scale_colour_manual(values=c('grey70', 'deepskyblue4')) + 
+        theme(legend.position="bottom") + 
+        guides(color = guide_legend(title = "Model"), shape = guide_legend(title = "Dx type"))
+ggsave("Figures/Fig_S02_Model11idnid_pct.png", plot, width = 8, height = 9)
+```
+
+
+```{r}
+acute <- c(0.145, 0.184, 0.267, 0.354, 0.382, 0.473, 0.574, 0.611, 0.836, 0.884, 0.888, 1.07, 1.139, 1.356, 1.448, 1.565, 2.051, 6.831)
+summary(acute)
+chronic <- c(0.069, 0.497, 0.518, 0.661, 0.702, 0.76, 0.808, 0.847, 0.875, 0.947, 1.008, 1.031, 1.043, 1.3, 1.385, 1.492, 1.709, 1.977, 2.618, 2.691)
+summary(chronic)
+
+chg <- read_csv("Tables/TabS11_PCT_CHG.csv") %>% 
+  mutate(nul_op = case_when(pct3 == "Null/opposite direction" ~ "Y",
+                            TRUE ~ "N"),
+         non_sig = case_when(is.na(sig.x) ~ "Y",
+                             TRUE ~ "N"),
+         group = case_when(pct2 > 0 ~ "Stronger",
+                           TRUE ~ "Weaker"))
+
+a <- chg %>% filter(nul_op == "N")
+a1 <- chg %>% filter(nul_op == "N" & group == "Stronger")
+a2 <- chg %>% filter(nul_op == "N" & group == "Weaker")
+median(abs(a$pct2))
+median(a1$pct2)
+median(a2$pct2)
+b <- chg %>% filter(nul_op == "N" & non_sig == "N")
+b1 <- chg %>% filter(nul_op == "N" & non_sig == "N" & group == "Stronger")
+b2 <- chg %>% filter(nul_op == "N" & non_sig == "N" & group == "Weaker")
+median(abs(b$pct2))
+median(b1$pct2)
+median(b2$pct2)
+ test <- M_all_sum %>% left_join(chg, by = "ICD10_3") %>% filter(Type == "Sibling Analysis") %>%  mutate(abs_pct = abs(pct2)) 
+```
+
+
+
